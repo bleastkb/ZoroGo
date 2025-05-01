@@ -31,14 +31,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // 异步执行其他操作
       (async () => {
         try {
+          // 先获取当前的 blockedSites
+          const { blockedSites } = await chrome.storage.sync.get('blockedSites');
+          console.log('当前阻止列表:', blockedSites);
+          
+          // 设置 session 状态
           await chrome.storage.sync.set({ 
             isSessionActive: true,
-            sessionEndTime: sessionEndTime 
+            sessionEndTime: sessionEndTime
           });
-          updateRules(true);
+          
+          // 确保有阻止列表时才启用规则
+          if (blockedSites && blockedSites.length > 0) {
+            console.log('正在启用阻止规则...');
+            await updateRules(true);
+          } else {
+            console.log('阻止列表为空，跳过规则更新');
+          }
+          
           updateBadge(true);
           
-          // 通知所有标签页session已开始
+          // 通知所有标签页 session 已开始
           sessionChannel.postMessage({ action: 'sessionStarted', timeLeft: message.duration * 60 });
           
           // 获取所有标签页并通知它们
@@ -317,9 +330,8 @@ async function updateRules(enable) {
           priority: 1,
           action: { type: "block" },
           condition: {
-            urlFilter: `*://*.${cleanSite}/*`,
-            resourceTypes: ["main_frame", "sub_frame", "script", "xmlhttprequest", "other"],
-            domains: [cleanSite]
+            urlFilter: site === '*' ? '*' : `*://*.${cleanSite}/*`,
+            resourceTypes: ["main_frame"]
           }
         };
       });

@@ -1,7 +1,6 @@
 // scripts/popup.js
 let timer = null;
 let timeLeft = 0;
-let isPaused = false;
 let isSessionActive = false;
 let sessionEndTime = 0;
 
@@ -17,6 +16,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const timerDisplay = document.getElementById('timer');
   const startButton = document.getElementById('startSession');
   const endButton = document.getElementById('endSession');
+  const minutesLabel = timeInput ? timeInput.nextElementSibling : null;
+  const blockAllSwitch = document.getElementById('blockAllSwitch');
+  const switchContainer = blockAllSwitch ? blockAllSwitch.closest('.switch-container') : null;
+  const settingsLink = document.getElementById('settings');
   
   // 检查DOM元素是否存在
   if (!timeInput || !timerDisplay || !startButton || !endButton) {
@@ -24,10 +27,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   
-  // 设置默认值
-  timeInput.value = '25';
-  timeLeft = 25 * 60;
-  updateTimerDisplay();
+  // 记住上次session时长
+  chrome.storage.local.get('lastSessionDuration', (result) => {
+    const last = result.lastSessionDuration;
+    if (last && !isNaN(last)) {
+      timeInput.value = last;
+      timeLeft = last * 60;
+      updateTimerDisplay();
+    } else {
+      timeInput.value = '25';
+      timeLeft = 25 * 60;
+      updateTimerDisplay();
+    }
+  });
   
   // 检查当前session状态
   try {
@@ -42,70 +54,95 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       if (response && response.isSessionActive) {
         timeLeft = response.timeLeft || 0;
-        isPaused = false;
         updateTimerDisplay();
-        startButton.textContent = 'Pause Session';
-        startButton.classList.add('pause');
+        startButton.style.display = 'none';
         endButton.style.display = 'block';
+        timeInput.style.display = 'none';
+        if (minutesLabel) minutesLabel.style.display = 'none';
+        if (switchContainer) switchContainer.style.display = 'none';
+        if (settingsLink) settingsLink.style.display = 'none';
         
         if (timeLeft > 0) {
           startTimer();
         }
+        if (blockAllSwitch) blockAllSwitch.disabled = true;
       } else {
         // 重置为默认状态
-        isPaused = true;
         timeLeft = parseInt(timeInput.value) * 60 || 25 * 60;
         updateTimerDisplay();
-        startButton.textContent = 'Start Session';
-        startButton.classList.remove('pause');
+        startButton.style.display = 'block';
         endButton.style.display = 'none';
+        timeInput.style.display = 'inline-block';
+        if (minutesLabel) minutesLabel.style.display = 'inline-block';
+        if (switchContainer) switchContainer.style.display = 'block';
+        if (settingsLink) settingsLink.style.display = 'inline-block';
+        if (blockAllSwitch) blockAllSwitch.disabled = false;
       }
     });
   } catch (error) {
     console.error('获取session状态异常:', error);
   }
   
-  // 开始/暂停按钮点击事件
-  startButton.addEventListener('click', () => {
-    console.log('点击开始/暂停按钮, 当前状态:', { isPaused, timeLeft });
+  // 开始按钮点击事件
+  startButton.addEventListener('click', async () => {
+    console.log('点击开始按钮, 当前状态:', { isSessionActive, timeLeft });
     
-    if (isPaused) {
-      // 开始新session
+    try {
       const duration = parseInt(timeInput.value) || 25;
+      // 记住本次session时长
+      await chrome.storage.local.set({ lastSessionDuration: duration });
+      
+      // 获取当前的阻止列表
+      const { blockedSites } = await chrome.storage.sync.get('blockedSites');
+      console.log('当前阻止列表:', blockedSites);
+      
+      if (!blockedSites || blockedSites.length === 0) {
+        if (!confirm('当前没有设置任何阻止网站，是否继续？')) {
+          return;
+        }
+      }
+      
       timeLeft = duration * 60;
-      isPaused = false;
+      startButton.style.display = 'none';
+      timeInput.style.display = 'none';
+      if (minutesLabel) minutesLabel.style.display = 'none';
+      if (switchContainer) switchContainer.style.display = 'none';
+      if (settingsLink) settingsLink.style.display = 'none';
+      if (blockAllSwitch) blockAllSwitch.disabled = true;
       
-      chrome.runtime.sendMessage({ 
-        action: 'startSession',
-        duration: duration
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('启动session时出错:', chrome.runtime.lastError);
-          return;
-        }
-        
-        console.log('session启动响应:', response);
-        startTimer();
-        startButton.textContent = 'Pause Session';
-        startButton.classList.add('pause');
-        endButton.style.display = 'block';
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ 
+          action: 'startSession',
+          duration: duration
+        }, (resp) => {
+          if (chrome.runtime.lastError) {
+            console.error('启动session时出错:', chrome.runtime.lastError);
+            resolve(null);
+          } else {
+            resolve(resp);
+          }
+        });
       });
-    } else {
-      // 暂停session
-      clearInterval(timer);
-      timer = null;
-      isPaused = true;
       
-      chrome.runtime.sendMessage({ action: 'pauseSession' }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('暂停session时出错:', chrome.runtime.lastError);
-          return;
-        }
-        
-        console.log('session暂停响应:', response);
-        startButton.textContent = 'Resume Session';
-        startButton.classList.remove('pause');
-      });
+      if (!response) {
+        throw new Error('启动session失败');
+      }
+      
+      console.log('session启动响应:', response);
+      startTimer();
+      endButton.style.display = 'block';
+      incStat('started');
+      if (blockAllSwitch) blockAllSwitch.disabled = true;
+      
+    } catch (error) {
+      console.error('启动session时出错:', error);
+      // 恢复UI状态
+      startButton.style.display = 'block';
+      timeInput.style.display = 'inline-block';
+      if (minutesLabel) minutesLabel.style.display = 'inline-block';
+      if (switchContainer) switchContainer.style.display = 'block';
+      if (settingsLink) settingsLink.style.display = 'inline-block';
+      if (blockAllSwitch) blockAllSwitch.disabled = false;
     }
   });
   
@@ -114,8 +151,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (confirm('Are you sure you want to end the current session?')) {
       clearInterval(timer);
       timer = null;
-      isPaused = true;
-      
       chrome.runtime.sendMessage({ action: 'endSession' }, (response) => {
         if (chrome.runtime.lastError) {
           console.error('结束session时出错:', chrome.runtime.lastError);
@@ -125,16 +160,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('session结束响应:', response);
         timeLeft = parseInt(timeInput.value) * 60 || 25 * 60;
         updateTimerDisplay();
-        startButton.textContent = 'Start Session';
-        startButton.classList.remove('pause');
+        startButton.style.display = 'block';
         endButton.style.display = 'none';
+        timeInput.style.display = 'inline-block';
+        if (minutesLabel) minutesLabel.style.display = 'inline-block';
+        if (switchContainer) switchContainer.style.display = 'block';
+        if (settingsLink) settingsLink.style.display = 'inline-block';
+        if (blockAllSwitch) blockAllSwitch.disabled = false;
       });
     }
   });
   
   // 监听时间输入
   timeInput.addEventListener('change', (e) => {
-    if (isPaused) {
+    if (!isSessionActive) {
       const minutes = parseInt(e.target.value) || 25;
       timeLeft = minutes * 60;
       updateTimerDisplay();
@@ -146,31 +185,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const message = event.data;
     console.log('收到BroadcastChannel消息:', message);
     
-    if (message && message.action === 'sessionPaused') {
-      clearInterval(timer);
-      timer = null;
-      isPaused = true;
-      timeLeft = parseInt(timeInput.value) * 60 || 25 * 60;
-      updateTimerDisplay();
-      startButton.textContent = 'Resume Session';
-      startButton.classList.remove('pause');
-      endButton.style.display = 'none';
-    } else if (message && message.action === 'sessionStarted') {
+    if (message && message.action === 'sessionStarted') {
       timeLeft = message.timeLeft || 0;
-      isPaused = false;
       updateTimerDisplay();
-      startButton.textContent = 'Pause Session';
-      startButton.classList.add('pause');
+      startButton.style.display = 'none';
       endButton.style.display = 'block';
+      timeInput.style.display = 'none';
+      if (minutesLabel) minutesLabel.style.display = 'none';
+      if (switchContainer) switchContainer.style.display = 'none';
+      if (settingsLink) settingsLink.style.display = 'none';
       
       if (timeLeft > 0) {
         startTimer();
       }
+      if (blockAllSwitch) blockAllSwitch.disabled = true;
+    } else if (message && message.action === 'sessionEnded') {
+      clearInterval(timer);
+      timer = null;
+      timeLeft = parseInt(timeInput.value) * 60 || 25 * 60;
+      updateTimerDisplay();
+      startButton.style.display = 'block';
+      endButton.style.display = 'none';
+      timeInput.style.display = 'inline-block';
+      if (minutesLabel) minutesLabel.style.display = 'inline-block';
+      if (switchContainer) switchContainer.style.display = 'block';
+      if (settingsLink) settingsLink.style.display = 'inline-block';
+      if (blockAllSwitch) blockAllSwitch.disabled = false;
     }
   };
   
   // 监听设置链接点击
-  const settingsLink = document.getElementById('settings');
   if (settingsLink) {
     settingsLink.addEventListener('click', (e) => {
       e.preventDefault();
@@ -184,6 +228,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isEnabled = event.target.checked;
     chrome.runtime.sendMessage({ action: 'toggleBlockEntertainment', enabled: isEnabled });
   });
+
+  if (blockAllSwitch) {
+    // 初始化开关状态
+    chrome.storage.sync.get('blockedSites', (result) => {
+      const blockedSites = result.blockedSites || [];
+      blockAllSwitch.checked = blockedSites.includes('*');
+    });
+
+    blockAllSwitch.addEventListener('change', async (e) => {
+      try {
+        if (e.target.checked) {
+          console.log('启用阻止所有网站');
+          await chrome.storage.sync.set({ blockedSites: ['*'] });
+          await chrome.runtime.sendMessage({ 
+            action: 'updateRules',
+            blockedSites: ['*']
+          });
+          console.log('已更新规则：阻止所有网站');
+        } else {
+          console.log('禁用阻止所有网站');
+          await chrome.storage.sync.set({ blockedSites: [] });
+          await chrome.runtime.sendMessage({ 
+            action: 'updateRules',
+            blockedSites: []
+          });
+          console.log('已更新规则：清空阻止列表');
+        }
+      } catch (error) {
+        console.error('更新阻止规则时出错:', error);
+      }
+    });
+  }
+
+  updateStatsUI(); // 页面加载时刷新统计
 });
 
 // 开始计时器
@@ -201,6 +279,8 @@ function startTimer() {
     if (timeLeft <= 0) {
       clearInterval(timer);
       timer = null;
+      incStat('succeeded');
+      showToast('Congrats! You made it!');
       
       chrome.runtime.sendMessage({ action: 'endSession' }, (response) => {
         if (chrome.runtime.lastError) {
@@ -210,12 +290,20 @@ function startTimer() {
       
       const startButton = document.getElementById('startSession');
       const endButton = document.getElementById('endSession');
+      const timeInput = document.getElementById('timeInput');
+      const minutesLabel = timeInput ? timeInput.nextElementSibling : null;
+      const blockAllSwitch = document.getElementById('blockAllSwitch');
+      const switchContainer = blockAllSwitch ? blockAllSwitch.closest('.switch-container') : null;
+      const settingsLink = document.getElementById('settings');
       
-      if (startButton && endButton) {
-        startButton.textContent = 'Start Session';
-        startButton.classList.remove('pause');
+      if (startButton && endButton && timeInput) {
+        startButton.style.display = 'block';
         endButton.style.display = 'none';
-        isPaused = true;
+        timeInput.style.display = 'inline-block';
+        if (minutesLabel) minutesLabel.style.display = 'inline-block';
+        if (switchContainer) switchContainer.style.display = 'block';
+        if (settingsLink) settingsLink.style.display = 'inline-block';
+        if (blockAllSwitch) blockAllSwitch.disabled = false;
       }
     }
   }, 1000);
@@ -265,31 +353,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       
       return false; // 不保持消息通道开放
     } 
-    else if (message.action === 'pauseSession') {
-      isSessionActive = false;
-      
-      // 立即返回响应
-      sendResponse({ success: true });
-      
-      // 异步执行其他操作
-      (async () => {
-        try {
-          await chrome.storage.sync.set({ 
-            isSessionActive: false,
-            sessionEndTime: 0 
-          });
-          updateRules(false);
-          updateBadge(false);
-          
-          // 通知所有标签页session已暂停
-          sessionChannel.postMessage({ action: 'sessionPaused' });
-        } catch (error) {
-          console.error('暂停session时出错:', error);
-        }
-      })();
-      
-      return false; // 不保持消息通道开放
-    } 
     else if (message.action === 'toggleBlockEntertainment') {
       const entertainmentSites = [
         'youtube.com',
@@ -331,3 +394,55 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     }
   });
 });
+
+// 统计相关函数
+function getTodayKey() {
+  const now = new Date();
+  return now.toISOString().slice(0, 10); // yyyy-mm-dd
+}
+
+async function updateStatsUI() {
+  const key = getTodayKey();
+  const stats = (await chrome.storage.sync.get(key))[key] || { started: 0, succeeded: 0 };
+  const startedEl = document.getElementById('statStarted');
+  const succeededEl = document.getElementById('statSucceeded');
+  if (startedEl) startedEl.textContent = stats.started;
+  if (succeededEl) succeededEl.textContent = stats.succeeded;
+}
+
+async function incStat(field) {
+  const key = getTodayKey();
+  const stats = (await chrome.storage.sync.get(key))[key] || { started: 0, succeeded: 0 };
+  stats[field] = (stats[field] || 0) + 1;
+  await chrome.storage.sync.set({ [key]: stats });
+  updateStatsUI();
+}
+
+function updateUrlList() {
+    urlList.innerHTML = '';
+    // 正序遍历，让最新添加的在最上面
+    for (let i = 0; i < blockedSites.length; i++) {
+        const site = blockedSites[i];
+        const li = document.createElement('li');
+        li.className = 'url-item';
+        li.innerHTML = `
+            <span>${site}</span>
+            <button class="delete-btn" data-url="${site}">Delete</button>
+        `;
+        urlList.appendChild(li);
+    }
+    // ...
+}
+
+// Toast显示函数
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  toast.style.opacity = '1';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => { toast.style.display = 'none'; }, 400);
+  }, 2000);
+}

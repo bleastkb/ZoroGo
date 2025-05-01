@@ -4,7 +4,7 @@
 <head>
   <style>
     body { 
-      width: 300px; 
+      width: 260px; 
       padding: 20px; 
       font-family: Arial, sans-serif;
     }
@@ -60,18 +60,20 @@
       background-color: #da190b;
     }
     .settings-link {
-      display: block;
-      margin-top: 20px;
-      text-align: center;
-      color: #666;
-      text-decoration: none;
+      display: inline-block;
+      margin: 0;
+      padding: 8px 12px;
       font-size: 14px;
-      padding: 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
+      color: #666;
+      text-decoration: none;
+      background: #fafafa;
+      transition: background 0.2s;
+      text-align: center;
     }
     .settings-link:hover {
-      background-color: #f5f5f5;
+      background: #f0f0f0;
     }
     .dialog-overlay {
       display: none;
@@ -113,6 +115,29 @@
       background-color: #f44336;
       color: white;
     }
+    .action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      gap: 10px;
+    }
+    .switch-container {
+      margin: 0;
+      text-align: left;
+      flex: 1;
+    }
+    #blockAllSwitch:disabled + span,
+    .switch-container label:has(input:disabled) {
+      color: #bbb !important;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    #blockAllSwitch:disabled {
+      accent-color: #bbb;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -120,12 +145,23 @@
     <input type="number" id="timeInput" min="1" value="25" placeholder="minutes">
     <span>minutes</span>
     <div class="timer" id="timer">25:00</div>
+    <div id="sessionStats" style="margin: 10px 0; font-size: 13px; color: #555; text-align: center;">
+      Today: Started <span id="statStarted">0</span> times, Succeeded <span id="statSucceeded">0</span> times
+    </div>
     <div class="button-container">
       <button id="startSession">Start Session</button>
       <button id="endSession">End Session</button>
     </div>
+    <div class="action-row">
+      <div class="switch-container">
+        <label style="font-size: 14px;">
+          <input type="checkbox" id="blockAllSwitch" style="transform: scale(1.3); margin-right: 8px;">
+          Block all websites
+        </label>
+      </div>
+      <a href="#" id="settings" class="settings-link">Manage Block List</a>
+    </div>
   </div>
-  <a href="#" id="settings" class="settings-link">Manage Block List</a>
 
   <div class="dialog-overlay" id="confirmDialog">
     <div class="dialog">
@@ -136,6 +172,8 @@
       </div>
     </div>
   </div>
+
+  <div id="toast" style="display:none;position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:#333;color:#fff;padding:12px 28px;border-radius:6px;font-size:15px;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,0.15);opacity:0;transition:opacity 0.3s;"></div>
 
   <script src="scripts/popup.js"></script>
 </body>
