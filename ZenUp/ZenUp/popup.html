@@ -1,0 +1,180 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { 
+      width: 260px; 
+      padding: 20px; 
+      font-family: Arial, sans-serif;
+    }
+    .timer-container {
+      margin: 15px 0;
+      text-align: center;
+    }
+    #timeInput {
+      width: 60px;
+      padding: 8px;
+      margin-right: 5px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .timer {
+      font-size: 48px;
+      font-weight: bold;
+      margin: 20px 0;
+      color: #4CAF50;
+      transition: color 0.3s;
+    }
+    .timer.active {
+      color: #2196F3;
+    }
+    .button-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    #startSession {
+      background-color: #4CAF50;
+      color: white;
+    }
+    #startSession:hover {
+      background-color: #45a049;
+    }
+    #endSession {
+      background-color: #f44336;
+      color: white;
+      display: none;
+    }
+    #endSession:hover {
+      background-color: #da190b;
+    }
+    .settings-link {
+      display: inline-block;
+      margin: 0;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      color: #666;
+      text-decoration: none;
+      background: #fafafa;
+      transition: background 0.2s;
+      text-align: center;
+    }
+    .settings-link:hover {
+      background: #f0f0f0;
+    }
+    .dialog-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+    }
+    .dialog {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .dialog-buttons {
+      margin-top: 15px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .dialog-button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .dialog-button.yes {
+      background-color: #4CAF50;
+      color: white;
+    }
+    .dialog-button.no {
+      background-color: #f44336;
+      color: white;
+    }
+    .action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      gap: 10px;
+    }
+    .switch-container {
+      margin: 0;
+      text-align: left;
+      flex: 1;
+    }
+    #blockAllSwitch:disabled + span,
+    .switch-container label:has(input:disabled) {
+      color: #bbb !important;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    #blockAllSwitch:disabled {
+      accent-color: #bbb;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="timer-container">
+    <input type="number" id="timeInput" min="1" value="25" placeholder="minutes">
+    <span>minutes</span>
+    <div class="timer" id="timer">25:00</div>
+    <div id="sessionStats" style="margin: 10px 0; font-size: 13px; color: #555; text-align: center;">
+      Today: Started <span id="statStarted">0</span> times, Succeeded <span id="statSucceeded">0</span> times
+    </div>
+    <div class="button-container">
+      <button id="startSession">Start Session</button>
+      <button id="endSession">End Session</button>
+    </div>
+    <div class="action-row">
+      <div class="switch-container">
+        <label style="font-size: 14px;">
+          <input type="checkbox" id="blockAllSwitch" style="transform: scale(1.3); margin-right: 8px;">
+          Block all websites
+        </label>
+      </div>
+      <a href="#" id="settings" class="settings-link">Manage Block List</a>
+    </div>
+  </div>
+
+  <div class="dialog-overlay" id="confirmDialog">
+    <div class="dialog">
+      <p>Hold on a little bit?</p>
+      <div class="dialog-buttons">
+        <button class="dialog-button yes">Yes</button>
+        <button class="dialog-button no">No</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" style="display:none;position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:#333;color:#fff;padding:12px 28px;border-radius:6px;font-size:15px;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,0.15);opacity:0;transition:opacity 0.3s;"></div>
+
+  <script src="scripts/popup.js"></script>
+</body>
+</html>
